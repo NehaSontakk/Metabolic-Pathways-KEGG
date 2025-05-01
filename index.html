@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Module Graph Viewer</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+    }
+    /* Center search bar at the top */
+    #search-container {
+      margin: 20px auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #moduleInput {
+      width: 200px;
+      padding: 8px;
+      font-size: 16px;
+    }
+    #searchBtn {
+      padding: 8px 12px;
+      margin-left: 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    /* put this once in your stylesheet or a <style> tag */
+    #graph-container svg {
+        display: block;         /* removes inline‑block whitespace */
+        margin: 100px auto 0;   /* top‑gap 100 px  |  auto left/right = center */
+    }
+
+  </style>
+  <script src="https://d3js.org/d3.v6.min.js"></script>
+  <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
+
+</head>
+<body>
+  <div id="header-container">
+    <h1>MODULE VIEWER</h1>
+  </div>
+  <div id="search-container">
+    <input type="text" id="moduleInput" placeholder="Enter module id" maxlength="6" />
+    <button id="searchBtn">Search</button>
+  </div>
+  <input type="file" id="fileInput" accept=".csv" />
+  <!-- Graph container -->
+  <div id="graph-container"></div>
+  <script type="module" src="script.js"></script>
+  <script type="module" src="fileProcessing.js"></script>
+  <script type="module" src="moduleSelector.js"></script>
+</body>
+</html>

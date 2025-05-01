@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Minimum Cost Pathway Visualization</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* Basic styling for nodes and links */
+    .node {
+      stroke: #000;
+      stroke-width: 1px;
+    }
+    .link {
+      stroke-width: 2px;
+    }
+    /* Style for highlighting the min-cost pathway */
+    .min-cost {
+      stroke: blue !important;
+      stroke-width: 4px;
+    }
+    text {
+      font-family: sans-serif;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <button onclick="computeMinCostPath()">Compute Minimum Cost Pathway</button>
+  <svg width="800" height="600"></svg>
+  <script>
+    // Define nodes (proteins). Each node has a position and a value:
+    // 1 means the protein is present; 0 means it is absent.
+    const nodes = [
+      { id: "source", x: 50,  y: 300, present: true,  value: -1 },
+      
+      // Pathway 1: source -> A -> B -> sink
+      { id: "A",      x: 250, y: 200, present: true,  value: 1 },
+      { id: "B",      x: 450, y: 200, present: false, value: 0 },  // Missing protein
+      
+      // Pathway 2: source -> C -> D -> sink
+      { id: "C",      x: 250, y: 300, present: false, value: 0 },  // Missing protein
+      { id: "D",      x: 450, y: 300, present: false, value: 0 },  // Missing protein
+      
+      // Pathway 3: source -> E -> F -> sink
+      { id: "E",      x: 250, y: 400, present: true,  value: 1 },
+      { id: "F",      x: 450, y: 400, present: false, value: 0 },  // Missing protein
+      
+      { id: "sink",   x: 650, y: 300, present: true,  value: 1 }
+    ];
+
+    // Define edges (reactions) between nodes.
+    // Each pathway is represented by a series of edges.
+    const links = [
+      // Pathway 1: source -> A -> B -> sink
+      { source: "source", target: "A" },
+      { source: "A",      target: "B" },
+      { source: "B",      target: "sink" },
+      
+      // Pathway 2: source -> C -> D -> sink
+      { source: "source", target: "C" },
+      { source: "C",      target: "D" },
+      { source: "D",      target: "sink" },
+      
+      // Pathway 3: source -> E -> F -> sink
+      { source: "source", target: "E" },
+      { source: "E",      target: "F" },
+      { source: "F",      target: "sink" }
+    ];
+
+    // For each edge, set capacity and activation cost.
+    // Capacity = 1 if both source and target proteins are present; otherwise 0.
+    // Activation cost = 0 if capacity = 1 (reaction works); otherwise 1.
+    links.forEach(link => {
+      const sourceNode = nodes.find(n => n.id === link.source);
+      const targetNode = nodes.find(n => n.id === link.target);
+      link.capacity = (sourceNode.present && targetNode.present) ? 1 : 0;
+      link.activationCost = link.capacity === 1 ? 0 : 1;
+    });
+
+    // Define the pathways manually (each is an ordered list of node IDs)
+    const pathways = [
+      ["source", "A", "B", "sink"],
+      ["source", "C", "D", "sink"],
+      ["source", "E", "F", "sink"]
+    ];
+
+    // Set up the SVG canvas
+    const svg = d3.select("svg");
+
+    // Draw links (edges)
+    const linkElements = svg.selectAll("line")
+      .data(links)
+      .enter()
+      .append("line")
+      .attr("class", "link")
+      .attr("x1", d => nodes.find(n => n.id === d.source).x)
+      .attr("y1", d => nodes.find(n => n.id === d.source).y)
+      .attr("x2", d => nodes.find(n => n.id === d.target).x)
+      .attr("y2", d => nodes.find(n => n.id === d.target).y)
+      // Green solid line if reaction works; red dashed line if blocked.
+      .attr("stroke", d => d.capacity === 1 ? "#0a0" : "#a00")
+      .attr("stroke-dasharray", d => d.capacity === 1 ? "0" : "4,4");
+
+    // Draw nodes (circles)
+    const nodeElements = svg.selectAll("circle")
+      .data(nodes)
+      .enter()
+      .append("circle")
+      .attr("class", "node")
+      .attr("cx", d => d.x)
+      .attr("cy", d => d.y)
+      .attr("r", 20)
+      .attr("fill", d => d.present ? "lightgreen" : "lightgray");
+
+    // Add labels for nodes (protein id and value)
+    svg.selectAll("text.node-label")
+      .data(nodes)
+      .enter()
+      .append("text")
+      .attr("class", "node-label")
+      .attr("x", d => d.x)
+      .attr("y", d => d.y - 25)
+      .attr("text-anchor", "middle")
+      .text(d => `${d.id} (${d.value})`);
+
+    // Add labels for links (showing capacity and activation cost)
+    svg.selectAll("text.link-label")
+      .data(links)
+      .enter()
+      .append("text")
+      .attr("class", "link-label")
+      .attr("x", d => (nodes.find(n => n.id === d.source).x + nodes.find(n => n.id === d.target).x) / 2)
+      .attr("y", d => (nodes.find(n => n.id === d.source).y + nodes.find(n => n.id === d.target).y) / 2 - 5)
+      .attr("text-anchor", "middle")
+      .attr("fill", "black")
+      .text(d => `cap: ${d.capacity}, act: ${d.activationCost}`);
+
+    // Function to compute the cost of a given pathway.
+    // Here we simply sum the activation cost for the internal nodes (excluding source and sink).
+    function computePathCost(path) {
+      let cost = 0;
+      for (let i = 1; i < path.length - 1; i++) {
+        const node = nodes.find(n => n.id === path[i]);
+        cost += (node.present ? 0 : 1);
+      }
+      return cost;
+    }
+
+    // Function to compute and highlight the minimum cost pathway.
+    function computeMinCostPath() {
+      let minCost = Infinity;
+      let bestPath = null;
+      
+      // Evaluate each pathway
+      pathways.forEach(path => {
+        const cost = computePathCost(path);
+        console.log(`Path ${path.join(" -> ")} has cost ${cost}`);
+        if (cost < minCost) {
+          minCost = cost;
+          bestPath = path;
+        }
+      });
+      
+      console.log("Minimum cost pathway:", bestPath, "with cost", minCost);
+      
+      // Reset all links to their original styling
+      linkElements
+        .attr("stroke", d => d.capacity === 1 ? "#0a0" : "#a00")
+        .attr("stroke-dasharray", d => d.capacity === 1 ? "0" : "4,4")
+        .attr("stroke-width", 2);
+      
+      // Highlight the best pathway:
+      // For each consecutive pair of nodes in the best path, find and highlight the corresponding link.
+      for (let i = 0; i < bestPath.length - 1; i++) {
+        const src = bestPath[i];
+        const tgt = bestPath[i+1];
+        linkElements
+          .filter(d => d.source === src && d.target === tgt)
+          .attr("stroke", "blue")
+          .attr("stroke-width", 4)
+          .attr("stroke-dasharray", "0");
+      }
+    }
+  </script>
+</body>
+</html>
