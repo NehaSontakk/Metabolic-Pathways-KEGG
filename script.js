@@ -81,12 +81,36 @@ export function renderGraph(nodes, links) {
   const g = sugiyamaLayout(nodes, links); 
 
   // Plot nodes and legends
-  plotNodes(nodes);
-  addLegends(SVG_W);
+  //plotNodes(nodes);
+  //addLegends(SVG_W);
 
   // Plot links using the provided nodes for lookup
   //plotLinks(links, nodes);
+  //plotLinks(links, nodes, g);
+  //addAttributePanel(svg, SVG_W, SVG_H);
+  plotNodes(nodes);
+  addLegends(SVG_W);
   plotLinks(links, nodes, g);
+
+  // ─── extend the SVG to fit the panel ───────────────────────
+  const PANEL_H   = 140;
+  const PANEL_PAD = 20;
+
+  // container div remains #graph-container, so this goes below the first <svg>
+  const panelSvg = d3.select("#graph-container")
+    .append("svg")
+      .attr("width",  SVG_W)
+      .attr("height", PANEL_H)
+      .style("display", "block")
+      .style("margin", "10px auto 0")    // a bit of top margin
+      .attr("viewBox", `0 0 ${SVG_W} ${PANEL_H}`);
+
+  // a <g> inside that to hold your shapes
+  const panelG = panelSvg.append("g")
+    .attr("transform", `translate(0, ${PANEL_PAD})`);
+
+  // draw the legend panel at y=0 inside this new SVG
+  addAttributePanel(panelG, SVG_W, /*graphH*/0, /*gap*/0);
 }
 
 const tooltip = d3.select("body")
@@ -158,6 +182,12 @@ function plotNodes(nodes) {
   const layerPositions = Array.from(groupToY, ([grp, y]) => ({grp, y}))
                                 .sort((a, b) => d3.ascending(a.grp, b.grp));
 
+  // maps exponent ∈ [5…50] → color from white → dark red
+  // maps exponent ∈ [5…50] → t=0→light, t=1→dark
+  const evalueColorScale = d3.scaleSequential(d3.interpolateReds)
+    .domain([5, 50])
+    .clamp(true);
+
   nodeGroup.selectAll("circle")
     .data(nodes)
     .enter()
@@ -171,7 +201,8 @@ function plotNodes(nodes) {
         return d.baseStroke;
      })
     .attr("stroke-width", d => d.baseStrokeW)
-    .attr("fill", d => {
+    
+    /* .attr("fill", d => {
       if (!koMap) {
         return nodeColorScale(d.KO_Occurrence) || "#071330";
       }
@@ -183,7 +214,27 @@ function plotNodes(nodes) {
       } else {
         return nodeColorScale(d.KO_Occurrence) || "#071330";
       }
-    })
+    }) */
+      .attr("fill", d => {
+        // 1) Define baseColor immediately
+        const baseColor = nodeColorScale(d.KO_Occurrence) || "#071330";
+    
+        // 2) If no KO map or no E-value for this node, fall back
+        if (!koMap) return baseColor;
+        const stripped = stripNodeID(d.id);
+        if (!koMap.has(stripped)) return baseColor;
+    
+        // 3) Parse E-value
+        const eValue = +koMap.get(stripped);
+        if (!(eValue > 0)) return baseColor;
+    
+        // 4) Compute exponent and map through your scale
+        const exp = -Math.log10(eValue);
+        return evalueColorScale(exp);  
+      })
+      
+      
+   
     .on("mouseover", (event, d) => {
       tooltip.transition().duration(200).style("opacity", 0.9);
       let tooltipText;
@@ -310,10 +361,10 @@ function plotLinks(links, nodes) {
     .range([1, 3]);
 
   // inside plotLinks (after you build nodeById)
-    const edgeLine = d3.line()          // converts array → "M … L …"
+    const edgeLine = d3.line()          
     .x(d => d.x)
     .y(d => d.y)
-    .curve(d3.curveStep);             // crisp 90‑degree corners
+    .curve(d3.curveStep);             //  90‑degree corners
 
 
   // Bind data to lines within the link group
@@ -335,6 +386,10 @@ function plotLinks(links, nodes) {
     //  const targetNode = nodeById.get(d.target);
     //  return targetNode ? targetNode.y : 0;
     //})
+    .each(function(d) {
+      // compute and save the “default” stroke
+      d.baseColor = edgeColorScale(d.edge_occurence) || '#999';
+    })
     .attr('x1', d => nodeById.get(d.source).x)
     .attr('y1', d => nodeById.get(d.source).y)
     .attr('x2', d => nodeById.get(d.target).x)
@@ -371,11 +426,48 @@ function addLegends(svgWidth) {
     .attr("font-weight", "bold")
     .text("Node Color");
 
-  const colorData = [
+    // 1. E-value gradient under the heading
+    const gradId = "evalueGradient";
+    const defs = svg.select("defs") || svg.append("defs");
+    const lg = defs.append("linearGradient")
+      .attr("id", gradId)
+      .attr("x1", "0%").attr("y1", "100%")
+      .attr("x2", "0%").attr("y2", "0%");
+    lg.append("stop").attr("offset", "0%").attr("stop-color", "#ffffff");
+    lg.append("stop").attr("offset", "100%").attr("stop-color", "darkred");
+  
+    // 2. draw gradient bar
+    const evBarY = 20;        
+    const evBarH = 150;
+    colorLegend.append("rect")
+      .attr("x", 0)
+      .attr("y", evBarY)
+      .attr("width", 20)
+      .attr("height", evBarH)
+      .style("fill", `url(#${gradId})`)
+      .style("stroke", "#777");
+  
+    // 3. ticks beside it
+    const evScale = d3.scaleLinear().domain([5,50]).range([evBarY + evBarH, evBarY]);
+    const evAxis = d3.axisRight(evScale)
+      .tickValues([5,10,20,30,40,50])
+      .tickFormat(d => `10^ ${d}`)
+      .tickSize(4);
+    colorLegend.append("g")
+      .attr("transform", `translate(20,0)`)
+      .call(evAxis);
+  
+    colorLegend.append("text")
+      .attr("x", 0)
+      .attr("y", evBarY - 6)
+      .attr("font-size", 10)
+      .text("−log₁₀(E)");
+
+/*   const colorData = [
     { color: "#FFC0CB", label: "Present in MAG  E‑value < 1e‑5" },
     { color: "#1f77b4", label: "Present in MAG  E‑value > 1e‑5" },
     { color: "black",   label: "Absent in MAG" }
-  ];
+  ]; 
 
   // circles
   colorLegend.selectAll("circle")
@@ -395,7 +487,8 @@ function addLegends(svgWidth) {
       .attr("y", (_, i) => 20 + i * 40)
       .attr("dy", "0.35em")
       .attr("font-size", 12)
-      .text(d => d.label);
+      .text(d => d.label); */
+
 }
 
 /**
@@ -605,3 +698,158 @@ function highlightAllSelectedPaths() {
 window.addEventListener("resize", () => {
   if (currentNodes.length) renderGraph(currentNodes, currentLinks);
 });
+
+function addAttributePanel(svgG, totalW, graphH, gap) {
+  // ─── CONFIG ────────────────────────────────────────────────
+  const innerW       = totalW - PAD_L - PAD_R;
+  const panelPadding = 12;   // px inside the panel
+  const lineHeight   = 24;   // vertical spacing per row
+  const cols         = 2;    // Nodes vs. Edges
+  const colWidth     = innerW / cols;
+
+  // total rows: 1 heading + 3 bullets for nodes, then same for edges
+  const rows = 1 + 3 + 1 + 3; 
+  const panelH = panelPadding * 2 + lineHeight * rows;
+  const y0     = graphH + gap;  // top of the panel (just below graph)
+
+  // ─── DRAW PANEL BOX ───────────────────────────────────────
+  const panel = svgG.append("g")
+    .attr("class", "attr-panel")
+    .attr("transform", `translate(0, ${y0})`);
+
+  panel.append("rect")
+    .attr("x", PAD_L)
+    .attr("y", 0)
+    .attr("width",  innerW)
+    .attr("height", panelH)
+    .attr("fill", "#fafafa")
+    .attr("stroke", "#ccc")
+    .attr("rx", 4);
+
+  // ─── NODES COLUMN ─────────────────────────────────────────
+  const nx = PAD_L + panelPadding;
+  let ny = panelPadding + lineHeight * 0;
+
+  // Heading
+  panel.append("text")
+    .attr("x", nx)
+    .attr("y", ny)
+    .attr("font-size", 13)
+    .attr("font-weight", "bold")
+    .text("Nodes (Proteins):");
+
+  // Bullets
+  // 1) Representation
+  ny += lineHeight;
+  panel.append("circle")
+    .attr("cx", nx)
+    .attr("cy", ny - 6)
+    .attr("r", 4)
+    .attr("fill", "#999");
+  panel.append("text")
+    .attr("x", nx + 12)
+    .attr("y", ny)
+    .attr("font-size", 12)
+    .text("Representation: Protein ID in database");
+
+  // 2) Size & Color
+  ny += lineHeight;
+  panel.append("circle")
+    .attr("cx", nx)
+    .attr("cy", ny - 6)
+    .attr("r", 5)
+    .attr("fill", "#333");
+  panel.append("text")
+    .attr("x", nx + 12)
+    .attr("y", ny)
+    .attr("font-size", 12)
+    .text("Size & Color → frequency of catalysis");
+
+  // 3) Position
+  ny += lineHeight;
+  panel.append("line")
+    .attr("x1", nx - 4)
+    .attr("y1", ny - 6)
+    .attr("x2", nx + 4)
+    .attr("y2", ny - 6)
+    .attr("stroke", "black")
+    .attr("marker-end", "url(#arrowhead)");
+  panel.append("text")
+    .attr("x", nx + 12)
+    .attr("y", ny)
+    .attr("font-size", 12)
+    .text("Y-pos → step via max distance from sink");
+
+  // ─── EDGES COLUMN ─────────────────────────────────────────
+  const ex = PAD_L + colWidth + panelPadding;
+  ny = panelPadding + lineHeight * 0;  // reset for heading
+
+  panel.append("text")
+    .attr("x", ex)
+    .attr("y", ny)
+    .attr("font-size", 13)
+    .attr("font-weight", "bold")
+    .text("Edges (Catalytic Transitions):");
+
+  // 1) Representation
+  ny += lineHeight;
+  panel.append("line")
+    .attr("x1", ex - 4)
+    .attr("y1", ny - 6)
+    .attr("x2", ex + 4)
+    .attr("y2", ny - 6)
+    .attr("stroke", "#888")
+    .attr("marker-end", "url(#arrowhead)");
+  panel.append("text")
+    .attr("x", ex + 12)
+    .attr("y", ny)
+    .attr("font-size", 12)
+    .text("Representation → connects enzyme steps");
+
+  // 2) Width & Color
+  ny += lineHeight;
+  panel.append("line")
+    .attr("x1", ex - 4)
+    .attr("y1", ny - 6)
+    .attr("x2", ex + 4)
+    .attr("y2", ny - 6)
+    .attr("stroke", "#333")
+    .attr("stroke-width", 4);
+  panel.append("text")
+    .attr("x", ex + 12)
+    .attr("y", ny)
+    .attr("font-size", 12)
+    .text("Width & Color → dependency strength");
+
+  // 3) Style: Solid vs. Dashed
+  ny += lineHeight;
+  // Solid
+  panel.append("line")
+    .attr("x1", ex - 4)
+    .attr("y1", ny - 6)
+    .attr("x2", ex + 4)
+    .attr("y2", ny - 6)
+    .attr("stroke", "black")
+    .attr("stroke-width", 2);
+  panel.append("text")
+    .attr("x", ex + 12)
+    .attr("y", ny)
+    .attr("font-size", 12)
+    .text("Solid → observed in real data");
+
+  // Dashed
+  ny += lineHeight;
+  panel.append("line")
+    .attr("x1", ex - 4)
+    .attr("y1", ny - 6)
+    .attr("x2", ex + 4)
+    .attr("y2", ny - 6)
+    .attr("stroke", "black")
+    .attr("stroke-width", 2)
+    .attr("stroke-dasharray", "4 2");
+  panel.append("text")
+    .attr("x", ex + 12)
+    .attr("y", ny)
+    .attr("font-size", 12)
+    .text("Dashed → theoretical");
+}

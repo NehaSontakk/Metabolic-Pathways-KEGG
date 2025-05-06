@@ -1,14 +1,10 @@
 // fileProcessing.js
 
-// We'll use a Promise-based function that reads a CSV string and returns
-// a Map (or object) of { KOName: EValue } pairs.
-
 export async function parseCSV(text) {
     // Split into lines
     const lines = text.split(/\r?\n/);
     
     // The first line should be the header: e.g. "KO,E-value,OtherColumn,..."
-    // We'll figure out which indices correspond to "KO" and "E-value".
     const header = lines[0].split(",");
     const koIndex = header.indexOf("KO");
     const eValueIndex = header.indexOf("E-value");
@@ -18,7 +14,6 @@ export async function parseCSV(text) {
       throw new Error("CSV missing 'KO' or 'E-value' column in the header.");
     }
   
-    // Create a Map to store the KO -> E-value
     const koMap = new Map();
   
     // Iterate over each subsequent line
@@ -45,11 +40,7 @@ export async function parseCSV(text) {
     return koMap;
   }
   
-  /**
-   * Utility to strip underscore from node ID.
-   * E.g. "K00001_42" -> "K00001"
-   * If your node is e.g. "K00001_42_foo", adapt accordingly.
-   */
+
   export function stripNodeID(nodeID) {
     // This finds the first underscore, if any, and takes everything before it
     const underscoreIndex = nodeID.indexOf("_");
